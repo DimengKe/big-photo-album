@@ -1,0 +1,61 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          # 版本 ${{ github.ref }}
+          
+          自动生成的发布版本。
+          
+          ## 包含内容
+          - 完整源代码
+          - Docker配置文件
+          - 安装脚本
+          - 使用文档
+          
+          ## 快速开始
+          ```bash
+          # 1. 下载发布包
+          # 2. 解压文件
+          # 3. 运行 docker-compose up -d
+          ```
+        draft: false
+        prerelease: false
+
+    - name: Create ZIP archive
+      run: |
+        zip -r big-photo-album-${{ github.ref_name }}.zip . \
+          -x "node_modules/*" \
+          -x ".git/*" \
+          -x "uploads/*" \
+          -x ".env" \
+          -x "*.log"
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./big-photo-album-${{ github.ref_name }}.zip
+        asset_name: big-photo-album-${{ github.ref_name }}.zip
+        asset_content_type: application/zip
