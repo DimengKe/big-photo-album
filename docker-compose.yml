@@ -1,1 +1,96 @@
+version: '3.8'
 
+services:
+  # MongoDB数据库
+  mongodb:
+    image: mongo:6
+    container_name: photo-album-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-admin123}
+      MONGO_INITDB_DATABASE: photo-album
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongodb/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    ports:
+      - "27017:27017"
+    networks:
+      - photo-network
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: photo-album-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis123}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - photo-network
+
+  # 后端服务
+  backend:
+    build: ./backend
+    container_name: photo-album-backend
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=mongodb://${MONGO_USER:-photo_user}:${MONGO_PASSWORD:-photo123}@mongodb:27017/photo-album?authSource=admin
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      - JWT_SECRET=${JWT_SECRET:-your_jwt_secret}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./backend:/app
+    ports:
+      - "5000:5000"
+    networks:
+      - photo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build: ./frontend
+    container_name: photo-album-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - photo-network
+
+  # Nginx代理（可选）
+  nginx:
+    image: nginx:alpine
+    container_name: photo-album-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./uploads:/usr/share/nginx/html/uploads:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - photo-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  photo-network:
+    driver: bridge
